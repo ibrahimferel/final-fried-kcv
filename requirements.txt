@@ -13,7 +13,7 @@ torchaudio==2.1.0                # FR-AUD-001: audio I/O (MP3/OGG optional forma
 # ── Audio DSP ─────────────────────────────────────────────────────────────────
 librosa==0.10.1                  # FR-AUD-006: Mel spectrogram extraction
 soundfile==0.12.1                # FR-AUD-001: WAV/FLAC read support
-numpy==1.24.4                    # FR-AUD-007: numerical operations
+numpy==1.26.4                    # FR-AUD-007: numerical operations
 
 # ── Computer Vision / XAI ─────────────────────────────────────────────────────
 grad-cam==1.5.0                  # FR-CV-011: jacobgil/pytorch-grad-cam
