@@ -166,6 +166,7 @@ def create_heatmap_overlay(tensor: Tensor, saliency: np.ndarray, cfg: dict[str, 
 
   colormap = cm.get_cmap(cmap_name)
   heatmap = colormap(np.clip(saliency, 0.0, 1.0))[..., :3].astype(np.float32)
+  overlay = np.clip((1.0 - alpha) * image + alpha * heatmap, 0.0, 1.0)
   overlay_u8 = (overlay * 255.0).astype(np.uint8)
 
   filename = f"gradcam_overlay_{int(time.time() * 1000)}.{fmt}"
