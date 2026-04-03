@@ -29,6 +29,7 @@ from typing import Any, Generator, Iterable
 
 import gradio as gr
 import numpy as np
+import pandas as pd  # ✅ FIX: tambah import pandas
 import torch
 import yaml
 
@@ -77,22 +78,30 @@ def _models_dir() -> Path:
 
 
 def _ensure_onnx_session(cfg: dict[str, Any], model: DSDBAModel) -> Any:
-  """
-  Create an ONNX Runtime session once at startup.
+    """Load ONNX session from HuggingFace Hub (FR-DEP-010)."""
+    from huggingface_hub import hf_hub_download
 
-  Args:
-    cfg: Full configuration mapping.
-    model: DSDBA PyTorch model used for ONNX export if needed.
+    # Coba download dari HF Hub dulu
+    try:
+        onnx_path = hf_hub_download(
+            repo_id="narcissablack/fake67",
+            filename="dsdba_efficientnet_b4.onnx"
+        )
+        log_info(stage="deployment", message="onnx_loaded_from_hub",
+                 data={"repo": "narcissablack/fake67"})
+    except Exception:
+        # Fallback ke lokal kalau ada (untuk development)
+        local_path = _models_dir() / "dsdba_efficientnet_b4.onnx"
+        if local_path.exists():
+            onnx_path = str(local_path)
+            log_warning(stage="deployment", message="onnx_loaded_from_local",
+                        data={"path": str(local_path)})
+        else:
+            log_warning(stage="deployment", message="onnx_missing_exporting",
+                        data={"path": str(local_path)})
+            onnx_path = export_to_onnx(model=model, cfg=cfg)
 
-  Returns:
-    onnxruntime.InferenceSession
-  """
-  _models_dir().mkdir(parents=True, exist_ok=True)
-  onnx_path = _models_dir() / "dsdba_efficientnet_b4.onnx"
-  if not onnx_path.exists():
-    log_warning(stage="deployment", message="onnx_missing_exporting", data={"path": str(onnx_path)})
-    onnx_path = export_to_onnx(model=model, cfg=cfg)
-  return load_onnx_session(onnx_path=onnx_path, cfg=cfg)
+    return load_onnx_session(onnx_path=onnx_path, cfg=cfg)
 
 
 def _maybe_load_weights(model: DSDBAModel, cfg: dict[str, Any]) -> None:
@@ -141,20 +150,24 @@ def _validate_file_size(audio_path: Path, cfg: dict[str, Any]) -> None:
     raise ValueError("FILE_TOO_LARGE")
 
 
-def _band_df(band_pct: dict[str, float]) -> dict[str, list[Any]]:
+def _band_df(band_pct: dict[str, float]) -> pd.DataFrame:
   """
-  Convert band_pct dict into a dataframe-like dict for gr.BarPlot without pandas dependency.
+  Convert band_pct dict into a Pandas DataFrame for gr.BarPlot.
+
+  ✅ FIX: gr.BarPlot requires a pandas DataFrame, not a plain dict.
+  Previously returned dict caused:
+    TypeError: Unsupported dataframe type, got: <class 'dict'>
 
   Args:
     band_pct: Mapping of band name -> percent.
 
   Returns:
-    Dict with columns: band, percent.
+    DataFrame with columns: band, percent.
   """
   order = ["low", "low_mid", "high_mid", "high"]
   bands = [b for b in order if b in band_pct]
   perc = [float(band_pct[b]) for b in bands]
-  return {"band": bands, "percent": perc}
+  return pd.DataFrame({"band": bands, "percent": perc})  # ✅ FIX: return DataFrame bukan dict
 
 
 def _confidence_percent(conf: float) -> float:
@@ -295,7 +308,7 @@ async def ui_run(audio_path: str | None) -> Generator[tuple[Any, Any, Any, Any, 
     - waveform display: use the original path (str)
     - spectrogram image path (Path)
     - gradcam overlay image path (Path)
-    - band barplot data (dict)
+    - band barplot data (pd.DataFrame)
     - explanation textbox (str)
   """
   if not audio_path:
