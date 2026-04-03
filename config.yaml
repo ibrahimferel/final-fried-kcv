@@ -111,7 +111,7 @@ nlp:
   # API credentials: NEVER stored here — use HF Spaces secrets [FR-NLP-005]
   api_key_env_var: HF_API_KEY         # Name of the Spaces secret (not the value)
   hf_token_env_var: HF_TOKEN           # Name of the HF token secret
-  base_url: "https://api-inference.huggingface.co/v1/"  # OpenAI-compatible base URL
+  base_url: "https://router.huggingface.co/v1/"  # OpenAI-compatible base URL
 
   # NLP caching (FR-NLP-008 — SHOULD)
   caching:
