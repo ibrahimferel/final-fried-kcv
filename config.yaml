@@ -82,7 +82,7 @@ gradcam:
   target_layer: "model.backbone.features[8]"   # FR-CV-010/011
   cam_target_class: 1                 # FR-CV-011: Grad-CAM target class index (spoof logit)
   library: pytorch_grad_cam            # FR-CV-011: jacobgil/pytorch-grad-cam
-  colormap: jet                        # FR-CV-012: overlay colormap
+  colormap: magma                       # FR-CV-012: overlay colormap
   overlay_alpha: 0.5                   # FR-CV-012: blending alpha
   output_format: png                   # FR-CV-012: heatmap output format
   heatmap_output_dir: outputs/gradcam  # FR-CV-012: PNG root (relative to project root)
