@@ -75,10 +75,6 @@ def get_target_layer(model: DSDBAModel, cfg: dict[str, Any]) -> nn.Module:
   """
 
   raw_path = str(cfg["gradcam"]["target_layer"])
-  # Support multiple config path conventions:
-  # - "model.features[8]" where "model" maps to EfficientNet backbone
-  # - "model.backbone.features[8]" where "model.backbone" is the wrapper's backbone
-  # Both should resolve to "backbone.features[8]" for traversal starting from DSDBAModel.
   if raw_path.startswith("model.backbone."):
     normalized = raw_path.replace("model.backbone.", "backbone.", 1)
   elif raw_path.startswith("model."):
@@ -139,19 +135,18 @@ def compute_gradcam(model: DSDBAModel, tensor: Tensor, cfg: dict[str, Any]) -> n
 
 def create_heatmap_overlay(tensor: Tensor, saliency: np.ndarray, cfg: dict[str, Any]) -> Path:
   """
-  Create heatmap overlay PNG using configured colormap and alpha.
+  Create pure heatmap PNG using configured colormap (no blend with original image).
 
   Args:
-    tensor: Input tensor `[3,224,224]` or `[1,3,224,224]`.
+    tensor: Input tensor `[3,224,224]` or `[1,3,224,224]` (unused for blending, kept for API compatibility).
     saliency: Saliency map `[224,224]` normalized to [0,1].
-    cfg: Config mapping with `gradcam.colormap` and `gradcam.overlay_alpha`.
+    cfg: Config mapping with `gradcam.colormap` and `gradcam.output_format`.
 
   Returns:
     Path to generated PNG file.
   """
 
   grad_cfg = cfg["gradcam"]
-  alpha = float(grad_cfg["overlay_alpha"])
   cmap_name = str(grad_cfg["colormap"])
   fmt = str(grad_cfg["output_format"]).lower()
   out_dir_value = grad_cfg.get("output_dir", None) or grad_cfg.get("heatmap_output_dir", None)
@@ -160,20 +155,16 @@ def create_heatmap_overlay(tensor: Tensor, saliency: np.ndarray, cfg: dict[str, 
     out_dir = Path(__file__).resolve().parents[2] / out_dir
   out_dir.mkdir(parents=True, exist_ok=True)
 
-  x = tensor[0] if tensor.ndim == 4 else tensor
-  image = x.detach().cpu().numpy().transpose(1, 2, 0).astype(np.float32)
-  image = np.clip(image, 0.0, 1.0)
-
+  # ✅ FIX: pure heatmap — tidak di-blend dengan gambar asli
   colormap = cm.get_cmap(cmap_name)
   heatmap = colormap(np.clip(saliency, 0.0, 1.0))[..., :3].astype(np.float32)
-  overlay = np.clip((1.0 - alpha) * image + alpha * heatmap, 0.0, 1.0)
-  overlay_u8 = (overlay * 255.0).astype(np.uint8)
+  heatmap_u8 = (heatmap * 255.0).astype(np.uint8)
 
-  filename = f"gradcam_overlay_{int(time.time() * 1000)}.{fmt}"
+  filename = f"gradcam_heatmap_{int(time.time() * 1000)}.{fmt}"
   output_path = out_dir / filename
   from PIL import Image
 
-  Image.fromarray(overlay_u8).save(output_path)
+  Image.fromarray(heatmap_u8).save(output_path)
   return output_path
 
 
@@ -218,17 +209,6 @@ def compute_band_attributions(saliency: np.ndarray, cfg: dict[str, Any]) -> dict
 
   Returns:
     Band attribution percentages summing to 100.0 +/- 0.001.
-
-  Notes:
-    `gradcam.band_attribution_method` controls aggregation:
-
-    - **saliency_mass** (default): ``sum(saliency in band) / sum(saliency over full map)``.
-      Matches localized hotspots better than row-wise mean (which dilutes small red areas
-      across large blue regions).
-
-    - **mean_softmax**: mean saliency per band, then softmax or proportional scaling per
-      ``band_normalisation``. Mean fixes bin-count bias for **sum**, but can look
-      uniformly ~25% when the map is mostly flat noise with a tiny hotspot.
   """
 
   ranges = get_mel_band_row_indices(cfg)
@@ -314,6 +294,5 @@ def get_raw_saliency_json(saliency: np.ndarray) -> dict[str, Any]:
   """
 
   payload = {"shape": list(saliency.shape), "saliency": saliency.astype(np.float32).tolist()}
-  # Validate serialisability for FR-CV-016.
   json.dumps(payload)
   return payload
