@@ -31,7 +31,7 @@ httpx==0.25.0                    # FR-NLP-002: async HTTP client for API calls
 aiohttp==3.8.6                   # FR-NLP-006: async invocation isolation
 
 # ── Deployment / UI ───────────────────────────────────────────────────────────
-gradio==4.44.0                    # FR-DEP-001: web interface (lock after Q6 resolved)
+gradio==4.36.1                    # FR-DEP-001: web interface (lock after Q6 resolved)
 pydantic==2.4.2                  # config.yaml validation (src/utils/config.py)
 python-dotenv==1.0.0             # .env.example support for local development
 
