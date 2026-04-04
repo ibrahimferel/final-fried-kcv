@@ -23,7 +23,8 @@ scikit-learn==1.3.0              # FR-CV-008: EER / AUC-ROC evaluation metrics
 
 # ── ONNX Runtime ──────────────────────────────────────────────────────────────
 onnx==1.14.1                     # FR-DEP-010: ONNX model format
-onnxruntime==1.16.3              # FR-DEP-010: CPU inference — CPUExecutionProvider
+# 1.16.x wheels hit "cannot enable executable stack" on glibc 2.41+ (HF Spaces).
+onnxruntime==1.23.2              # FR-DEP-010: CPU inference — CPUExecutionProvider
 
 # ── NLP / API ─────────────────────────────────────────────────────────────────
 openai==1.3.0                    # FR-NLP-002: Qwen 2.5 API client (OpenAI-compatible)
