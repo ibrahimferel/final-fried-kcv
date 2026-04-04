@@ -396,12 +396,12 @@ def build_demo() -> gr.Blocks:
 
         with gr.Row():
             with gr.Column(scale=1):
+                # Gradio 4.36.x (default on many Spaces) does not support `file_types` on Audio;
+                # conversion in `_convert_to_wav` still accepts MP3/WebM/mislabeled WAV from upload or mic.
                 audio_in = gr.Audio(
                     label="Upload or record",
                     type="filepath",
                     sources=["upload", "microphone"],
-                    # Upload filters; microphone format depends on browser (handled in _convert_to_wav).
-                    file_types=[".wav", ".flac", ".mp3", ".mp4", ".m4a", ".ogg", ".webm"],
                 )
                 run_btn = gr.Button("Run", variant="primary")
                 gr.Examples(
