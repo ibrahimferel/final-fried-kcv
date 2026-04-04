@@ -63,7 +63,7 @@ async def test_nlp_fallback_does_not_block_cv(cfg: dict[str, Any]) -> None:
     return ("rule-based", False)
 
   with patch("app.generate_explanation", new=_slow_explain):
-    label, confidence, spec_path, heatmap_path, band_pct, task = dsdba_app.run_pipeline(
+    label, confidence, spec_path, heatmap_path, band_pct, task, _wav_ui = dsdba_app.run_pipeline(
       samples[0],
       cfg=dsdba_app.CFG,
       onnx_session=dsdba_app.ONNX_SESSION,
