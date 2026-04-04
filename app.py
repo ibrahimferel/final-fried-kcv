@@ -60,6 +60,31 @@ def _project_root() -> Path:
     return Path(__file__).resolve().parent
 
 
+def _coerce_audio_filepath(raw: Any) -> str | None:
+    """
+    Normalize Gradio Audio payloads to a filesystem path string.
+
+    Spaces / older clients may send ``FileData``-like dicts (``{"path": "..."}``)
+    instead of a bare string; examples usually pass a plain path.
+    """
+    if raw is None:
+        return None
+    if isinstance(raw, str):
+        path = raw.strip()
+        return path if path else None
+    if isinstance(raw, Path):
+        return str(raw)
+    path_key = getattr(raw, "path", None)
+    if isinstance(path_key, str) and path_key.strip():
+        return path_key.strip()
+    if isinstance(raw, dict):
+        for key in ("path", "name", "file_name"):
+            val = raw.get(key)
+            if isinstance(val, str) and val.strip():
+                return val.strip()
+    return None
+
+
 def _models_dir() -> Path:
     return _project_root() / "models" / "checkpoints"
 
@@ -293,7 +318,7 @@ def run_pipeline(
         generate_explanation(label=label, confidence=confidence, band_pct=band_pct, cfg=cfg)
     )
     spec_path = _spectrogram_image_from_tensor(tensor)
-    return label, confidence, spec_path, heatmap_path, band_pct, explanation_task
+    return label, confidence, spec_path, heatmap_path, band_pct, explanation_task, audio_path
 
 
 # ── Startup: load config + model + ONNX session ONCE ──────────────────────────
@@ -311,16 +336,25 @@ def _ui_error_outputs() -> tuple:
     return (None, None, "", None, None, None, None, "")
 
 
-async def ui_run(audio_path: str | None):
-    if not audio_path:
+async def ui_run(audio_path: Any):
+    path_str = _coerce_audio_filepath(audio_path)
+    if not path_str:
         gr.Warning("Please upload or record an audio clip.")
         yield _ui_error_outputs()
         return
 
     start = time.perf_counter()
     try:
-        label, confidence, spec_path, heatmap_path, band_pct, explanation_task = run_pipeline(
-            audio_file=audio_path,
+        (
+            label,
+            confidence,
+            spec_path,
+            heatmap_path,
+            band_pct,
+            explanation_task,
+            wav_for_display,
+        ) = run_pipeline(
+            audio_file=path_str,
             cfg=CFG,
             onnx_session=ONNX_SESSION,
             model=MODEL,
@@ -331,9 +365,9 @@ async def ui_run(audio_path: str | None):
             label,
             _confidence_percent(confidence),
             _verdict_html(label=label, confidence=confidence),
-            str(audio_path),
-            spec_path,
-            heatmap_path,
+            str(wav_for_display),
+            str(spec_path),
+            str(heatmap_path),
             _band_df(band_pct),
             "⏳ Generating explanation…",
         )
@@ -347,9 +381,9 @@ async def ui_run(audio_path: str | None):
             label,
             _confidence_percent(confidence),
             _verdict_html(label=label, confidence=confidence),
-            str(audio_path),
-            spec_path,
-            heatmap_path,
+            str(wav_for_display),
+            str(spec_path),
+            str(heatmap_path),
             _band_df(band_pct),
             explanation_text,
         )
@@ -401,6 +435,7 @@ def build_demo() -> gr.Blocks:
                 audio_in = gr.Audio(
                     label="Upload or record",
                     type="filepath",
+                    format="wav",
                     sources=["upload", "microphone"],
                 )
                 run_btn = gr.Button("Run", variant="primary")
@@ -454,6 +489,7 @@ def build_demo() -> gr.Blocks:
 
 
 DEMO = build_demo()
+DEMO.queue()
 
 if __name__ == "__main__":
     DEMO.launch()
