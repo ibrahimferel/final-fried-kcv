@@ -427,6 +427,15 @@ def build_demo() -> gr.Blocks:
             "Upload or record audio (≤ 20 MB). Recordings are converted to WAV internally "
             "(including browser MP3/WebM). CV results appear first; explanation loads asynchronously."
         )
+        gr.Markdown(
+            "**Using upload or microphone**\n\n"
+            "1. Switch source with the **folder** icon (upload) vs **microphone** icon (record).\n"
+            "2. After you pick a file **or** finish recording (stop button), the pipeline **runs automatically**; "
+            "you can also press **Run** to re-process the same clip.\n"
+            "3. If the file picker or mic does nothing, open this Space in a **new tab** (expand/fullscreen on "
+            "Hugging Face, or use the `*.hf.space` URL) and **allow microphone** when the browser asks.\n"
+            "4. Some browsers block mic/file access inside a small embedded frame on hf.co."
+        )
 
         with gr.Row():
             with gr.Column(scale=1):
@@ -437,6 +446,11 @@ def build_demo() -> gr.Blocks:
                     type="filepath",
                     format="wav",
                     sources=["upload", "microphone"],
+                    interactive=True,
+                    waveform_options={
+                        "show_recording_waveform": True,
+                        "show_controls": True,
+                    },
                 )
                 run_btn = gr.Button("Run", variant="primary")
                 gr.Examples(
@@ -464,12 +478,22 @@ def build_demo() -> gr.Blocks:
                 gr.Markdown("**AI-generated explanation (English)**")
                 explanation = gr.Textbox(label="Explanation", lines=6)
 
-        run_btn.click(
-            fn=ui_run,
-            inputs=[audio_in],
-            outputs=[verdict, confidence_pct, conf_bar, waveform, spec_img,
-                     gradcam_img, band_plot, explanation],
-        )
+        _pipeline_inputs = [audio_in]
+        _pipeline_outputs = [
+            verdict,
+            confidence_pct,
+            conf_bar,
+            waveform,
+            spec_img,
+            gradcam_img,
+            band_plot,
+            explanation,
+        ]
+        run_btn.click(fn=ui_run, inputs=_pipeline_inputs, outputs=_pipeline_outputs)
+        # Auto-run after a file is uploaded (disk picker / drag-drop).
+        audio_in.upload(fn=ui_run, inputs=_pipeline_inputs, outputs=_pipeline_outputs)
+        # Auto-run after microphone recording is stopped.
+        audio_in.stop_recording(fn=ui_run, inputs=_pipeline_inputs, outputs=_pipeline_outputs)
 
         with gr.Accordion("About", open=False):
             gr.Markdown(
