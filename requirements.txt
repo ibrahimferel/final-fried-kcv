@@ -55,4 +55,4 @@ pytest-timeout==2.2.0            # Latency assertion enforcement
 black==23.9.1                    # R.E.F.A.C.T.: code formatting
 mypy==1.6.1                      # R.E.F.A.C.T.: strict type checking
 flake8==6.1.0                    # R.E.F.A.C.T.: style compliance
-pydub==0.25.1
+pydub
