@@ -418,10 +418,6 @@ async def ui_run(audio_path: Any):
 
 # ── Gradio UI ──────────────────────────────────────────────────────────────────
 
-def _after_audio_input_event() -> None:
-    """No-op so Gradio can commit the Audio value before `ui_run` reads it (upload / stop_recording)."""
-
-
 def build_demo() -> gr.Blocks:
     demo_samples = ensure_demo_samples(CFG)
 
@@ -431,34 +427,16 @@ def build_demo() -> gr.Blocks:
             "Upload or record audio (≤ 20 MB). Recordings are converted to WAV internally "
             "(including browser MP3/WebM). CV results appear first; explanation loads asynchronously."
         )
-        gr.Markdown(
-            "**Using upload or microphone**\n\n"
-            "1. Switch source with the **folder** icon (upload) vs **microphone** icon (record).\n"
-            "2. After you pick a file **or** finish recording (stop button), the pipeline **runs automatically** "
-            "(the file must finish uploading first — wait for the waveform to appear).\n"
-            "You can also press **Run** to re-process the same clip.\n"
-            "3. If the file picker or mic does nothing, open this Space in a **new tab** (expand/fullscreen on "
-            "Hugging Face, or use the `*.hf.space` URL) and **allow microphone** when the browser asks.\n"
-            "4. Some browsers block mic/file access inside a small embedded frame on hf.co."
-        )
 
         with gr.Row():
             with gr.Column(scale=1):
                 # Gradio 4.36.x (default on many Spaces) does not support `file_types` on Audio;
                 # conversion in `_convert_to_wav` still accepts MP3/WebM/mislabeled WAV from upload or mic.
-                # editable=False: avoids the waveform “trim” editor that must be applied before Gradio
-                # commits a filepath — without that, the file looks selected but never reaches the backend.
                 audio_in = gr.Audio(
                     label="Upload or record",
                     type="filepath",
                     format="wav",
                     sources=["upload", "microphone"],
-                    interactive=True,
-                    editable=False,
-                    waveform_options={
-                        "show_recording_waveform": True,
-                        "show_controls": True,
-                    },
                 )
                 run_btn = gr.Button("Run", variant="primary")
                 gr.Examples(
@@ -486,28 +464,11 @@ def build_demo() -> gr.Blocks:
                 gr.Markdown("**AI-generated explanation (English)**")
                 explanation = gr.Textbox(label="Explanation", lines=6)
 
-        _pipeline_inputs = [audio_in]
-        _pipeline_outputs = [
-            verdict,
-            confidence_pct,
-            conf_bar,
-            waveform,
-            spec_img,
-            gradcam_img,
-            band_plot,
-            explanation,
-        ]
-        run_btn.click(fn=ui_run, inputs=_pipeline_inputs, outputs=_pipeline_outputs)
-        # Defer pipeline until after the Audio component state updates (avoids ui_run seeing None / stale path).
-        audio_in.upload(_after_audio_input_event, inputs=[], outputs=[]).then(
+        run_btn.click(
             fn=ui_run,
-            inputs=_pipeline_inputs,
-            outputs=_pipeline_outputs,
-        )
-        audio_in.stop_recording(_after_audio_input_event, inputs=[], outputs=[]).then(
-            fn=ui_run,
-            inputs=_pipeline_inputs,
-            outputs=_pipeline_outputs,
+            inputs=[audio_in],
+            outputs=[verdict, confidence_pct, conf_bar, waveform, spec_img,
+                     gradcam_img, band_plot, explanation],
         )
 
         with gr.Accordion("About", open=False):
