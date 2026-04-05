@@ -29,7 +29,6 @@ from typing import Any, Generator, Iterable
 
 import gradio as gr
 import numpy as np
-import pandas as pd
 import torch
 import yaml
 
@@ -43,6 +42,19 @@ from src.utils.logger import log_error, log_info, log_warning
 
 
 def load_config(path: str | Path) -> dict[str, Any]:
+  """
+  Load config.yaml from disk.
+
+  Args:
+    path: Path to config YAML file.
+
+  Returns:
+    Parsed configuration mapping.
+
+  Raises:
+    FileNotFoundError: If config path does not exist.
+    ValueError: If YAML cannot be parsed.
+  """
   cfg_path = Path(path)
   if not cfg_path.is_absolute():
     cfg_path = Path(__file__).resolve().parent / cfg_path
@@ -55,69 +67,50 @@ def load_config(path: str | Path) -> dict[str, Any]:
 
 
 def _project_root() -> Path:
+  """Return project root directory (repo root)."""
   return Path(__file__).resolve().parent
 
 
 def _models_dir() -> Path:
+  """Return models directory under project root."""
   return _project_root() / "models" / "checkpoints"
 
 
 def _ensure_onnx_session(cfg: dict[str, Any], model: DSDBAModel) -> Any:
-    """Load ONNX session from HuggingFace Hub (FR-DEP-010)."""
-    from huggingface_hub import hf_hub_download
+  """
+  Create an ONNX Runtime session once at startup.
 
-    try:
-        onnx_path = hf_hub_download(
-            repo_id="narcissablack/fake67",
-            filename="dsdba_efficientnet_b4.onnx"
-        )
-        log_info(stage="deployment", message="onnx_loaded_from_hub",
-                 data={"repo": "narcissablack/fake67"})
-    except Exception:
-        local_path = _models_dir() / "dsdba_efficientnet_b4.onnx"
-        if local_path.exists():
-            onnx_path = str(local_path)
-            log_warning(stage="deployment", message="onnx_loaded_from_local",
-                        data={"path": str(local_path)})
-        else:
-            log_warning(stage="deployment", message="onnx_missing_exporting",
-                        data={"path": str(local_path)})
-            onnx_path = export_to_onnx(model=model, cfg=cfg)
+  Args:
+    cfg: Full configuration mapping.
+    model: DSDBA PyTorch model used for ONNX export if needed.
 
-    return load_onnx_session(onnx_path=onnx_path, cfg=cfg)
+  Returns:
+    onnxruntime.InferenceSession
+  """
+  _models_dir().mkdir(parents=True, exist_ok=True)
+  onnx_path = _models_dir() / "dsdba_efficientnet_b4.onnx"
+  if not onnx_path.exists():
+    log_warning(stage="deployment", message="onnx_missing_exporting", data={"path": str(onnx_path)})
+    onnx_path = export_to_onnx(model=model, cfg=cfg)
+  return load_onnx_session(onnx_path=onnx_path, cfg=cfg)
 
 
 def _maybe_load_weights(model: DSDBAModel, cfg: dict[str, Any]) -> None:
   """
-  Load best checkpoint weights from HuggingFace Hub first, fallback to local.
+  Load best checkpoint weights if present; otherwise keep random weights.
 
-  ✅ FIX: Tambah download dari HF Hub supaya Space bisa load trained weights.
-  Sebelumnya hanya cek lokal → selalu random weights di HF Space.
+  Args:
+    model: DSDBAModel instance.
+    cfg: Full configuration mapping.
+
+  Returns:
+    None.
   """
-  from huggingface_hub import hf_hub_download
-
   ckpt_name = str(cfg.get("training", {}).get("best_checkpoint_filename", "best_model.pth"))
-
-  # ✅ Coba download dari HF Hub dulu
-  ckpt_path = None
-  try:
-    ckpt_path = hf_hub_download(
-      repo_id="narcissablack/fake67",
-      filename=ckpt_name
-    )
-    log_info(stage="deployment", message="checkpoint_loaded_from_hub",
-             data={"repo": "narcissablack/fake67", "filename": ckpt_name})
-  except Exception:
-    # Fallback ke lokal
-    local_path = _models_dir() / ckpt_name
-    if local_path.exists():
-      ckpt_path = str(local_path)
-      log_warning(stage="deployment", message="checkpoint_loaded_from_local",
-                  data={"path": str(local_path)})
-    else:
-      log_warning(stage="deployment", message="checkpoint_missing_random_weights",
-                  data={"path": str(local_path)})
-      return
+  ckpt_path = _models_dir() / ckpt_name
+  if not ckpt_path.exists():
+    log_warning(stage="deployment", message="checkpoint_missing_random_weights", data={"path": str(ckpt_path)})
+    return
 
   try:
     payload = torch.load(str(ckpt_path), map_location="cpu")
@@ -125,29 +118,64 @@ def _maybe_load_weights(model: DSDBAModel, cfg: dict[str, Any]) -> None:
     model.load_state_dict(state, strict=False)
     log_info(stage="deployment", message="checkpoint_loaded", data={"path": str(ckpt_path)})
   except Exception as exc:
-    log_warning(stage="deployment", message="checkpoint_load_failed_random_weights",
-                data={"path": str(ckpt_path), "reason": str(exc)})
+    log_warning(stage="deployment", message="checkpoint_load_failed_random_weights", data={"path": str(ckpt_path), "reason": str(exc)})
 
 
 def _validate_file_size(audio_path: Path, cfg: dict[str, Any]) -> None:
+  """
+  Validate upload size before any processing (FR-DEP-002).
+
+  Args:
+    audio_path: Path to the uploaded audio file.
+    cfg: Full config mapping (uses deployment.max_upload_mb).
+
+  Returns:
+    None.
+
+  Raises:
+    ValueError: If file exceeds configured size.
+  """
   max_mb = float(cfg["deployment"]["max_upload_mb"])
   size_bytes = int(audio_path.stat().st_size)
   if size_bytes > int(max_mb * 1024 * 1024):
     raise ValueError("FILE_TOO_LARGE")
 
 
-def _band_df(band_pct: dict[str, float]) -> pd.DataFrame:
+def _band_df(band_pct: dict[str, float]) -> dict[str, list[Any]]:
+  """
+  Convert band_pct dict into a dataframe-like dict for gr.BarPlot without pandas dependency.
+
+  Args:
+    band_pct: Mapping of band name -> percent.
+
+  Returns:
+    Dict with columns: band, percent.
+  """
   order = ["low", "low_mid", "high_mid", "high"]
   bands = [b for b in order if b in band_pct]
   perc = [float(band_pct[b]) for b in bands]
-  return pd.DataFrame({"band": bands, "percent": perc})
+  return {"band": bands, "percent": perc}
+
+def _band_plot(band_pct: dict[str, float]):
+    import matplotlib.pyplot as plt
+    order = ["low", "low_mid", "high_mid", "high"]
+    bands = [b for b in order if b in band_pct]
+    perc = [float(band_pct[b]) for b in bands]
+    fig, ax = plt.subplots(figsize=(5, 3))
+    ax.bar(bands, perc, color="#6366f1")
+    ax.set_ylabel("Attribution (%)")
+    ax.set_title("Frequency Band Attribution")
+    plt.tight_layout()
+    return fig
 
 
 def _confidence_percent(conf: float) -> float:
+  """Convert confidence ratio (0..1) into percentage."""
   return float(conf) * 100.0
 
 
 def _verdict_html(label: str, confidence: float) -> str:
+  """Return a simple HTML bar showing confidence."""
   pct = max(0.0, min(100.0, _confidence_percent(confidence)))
   color = "#ef4444" if str(label).lower() == "spoof" else "#22c55e"
   return (
@@ -159,6 +187,15 @@ def _verdict_html(label: str, confidence: float) -> str:
 
 
 def _spectrogram_image_from_tensor(tensor: torch.Tensor) -> Path:
+  """
+  Create a quick spectrogram image from the first channel of the input tensor.
+
+  Args:
+    tensor: torch.Tensor [3,224,224] float32.
+
+  Returns:
+    Path to a temporary PNG file.
+  """
   import matplotlib.pyplot as plt
 
   x = tensor.detach().cpu()
@@ -174,6 +211,18 @@ def _spectrogram_image_from_tensor(tensor: torch.Tensor) -> Path:
 
 
 def ensure_demo_samples(cfg: dict[str, Any]) -> list[Path]:
+  """
+  Ensure demo audio samples exist under data/samples (FR-DEP-008).
+
+  Notes:
+    These are synthetic tones/noise for UI smoke tests, not real dataset clips.
+
+  Args:
+    cfg: Full configuration mapping.
+
+  Returns:
+    List of 4 sample file paths.
+  """
   import soundfile as sf
 
   root = _project_root() / "data" / "samples"
@@ -183,8 +232,10 @@ def ensure_demo_samples(cfg: dict[str, Any]) -> list[Path]:
   t = np.linspace(0.0, float(cfg["audio"]["duration_sec"]), num=n, endpoint=False, dtype=np.float32)
 
   samples: list[tuple[str, np.ndarray]] = []
+  # "Bonafide": clean tones
   samples.append(("bonafide_01.wav", 0.1 * np.sin(2.0 * np.pi * 220.0 * t).astype(np.float32)))
   samples.append(("bonafide_02.wav", 0.1 * np.sin(2.0 * np.pi * 440.0 * t).astype(np.float32)))
+  # "Spoof": noisy / high-frequency emphasis (synthetic)
   rng = np.random.default_rng(0)
   noise = (0.03 * rng.standard_normal(size=n)).astype(np.float32)
   hf = (0.06 * np.sin(2.0 * np.pi * 3200.0 * t)).astype(np.float32)
@@ -201,6 +252,24 @@ def ensure_demo_samples(cfg: dict[str, Any]) -> list[Path]:
 
 
 def run_pipeline(audio_file: str | Path, cfg: dict[str, Any], onnx_session: Any, model: DSDBAModel):
+  """
+  MAIN PIPELINE FUNCTION (FR-DEP-002..010).
+
+  Stages:
+    1) Preprocess audio -> tensor (FR-AUD-001..008)
+    2) ONNX inference -> (label, confidence) (FR-CV-004, FR-DEP-010)
+    3) Grad-CAM -> heatmap_path, band_pct (FR-CV-010..016)
+    4) NLP explanation started as asyncio.Task (FR-NLP-006)
+
+  Args:
+    audio_file: File path from Gradio upload.
+    cfg: Full configuration mapping.
+    onnx_session: ONNX Runtime session created once at startup.
+    model: DSDBAModel used for Grad-CAM.
+
+  Returns:
+    (label, confidence, spectrogram_path, heatmap_path, band_pct, explanation_task)
+  """
   audio_path = Path(audio_file)
   _validate_file_size(audio_path=audio_path, cfg=cfg)
 
@@ -208,6 +277,7 @@ def run_pipeline(audio_file: str | Path, cfg: dict[str, Any], onnx_session: Any,
   label, confidence = run_onnx_inference(session=onnx_session, tensor=tensor, cfg=cfg)
   heatmap_path, band_pct = run_gradcam(tensor=tensor, model=model, cfg=cfg)
 
+  # Start NLP without blocking the CV result display (FR-NLP-006).
   explanation_task = asyncio.create_task(generate_explanation(label=label, confidence=confidence, band_pct=band_pct, cfg=cfg))
   spec_path = _spectrogram_image_from_tensor(tensor)
   return label, confidence, spec_path, heatmap_path, band_pct, explanation_task
@@ -222,10 +292,24 @@ ONNX_SESSION = _ensure_onnx_session(cfg=CFG, model=MODEL)
 
 
 def _ui_error_outputs() -> tuple[Any, Any, Any, Any, Any, Any, Any, Any]:
+  """Return empty placeholders for UI outputs."""
   return (None, None, "", None, None, None, None, "")
 
 
 async def ui_run(audio_path: str | None) -> Generator[tuple[Any, Any, Any, Any, Any, Any, Any, Any], None, None]:
+  """
+  Gradio handler that streams outputs so CV results appear before NLP finishes (FR-NLP-006).
+
+  Outputs:
+    - verdict label (str)
+    - confidence percent (float)
+    - confidence bar HTML (str)
+    - waveform display: use the original path (str)
+    - spectrogram image path (Path)
+    - gradcam overlay image path (Path)
+    - band barplot data (dict)
+    - explanation textbox (str)
+  """
   if not audio_path:
     gr.Warning("Please upload a WAV/FLAC file.")
     yield _ui_error_outputs()
@@ -240,6 +324,7 @@ async def ui_run(audio_path: str | None) -> Generator[tuple[Any, Any, Any, Any, 
       model=MODEL,
     )
 
+    # First yield: show CV+XAI outputs immediately, keep explanation "loading".
     yield (
       label,
       _confidence_percent(confidence),
@@ -247,7 +332,7 @@ async def ui_run(audio_path: str | None) -> Generator[tuple[Any, Any, Any, Any, 
       str(audio_path),
       spec_path,
       heatmap_path,
-      _band_df(band_pct),
+      _band_plot(band_pct),
       "Generating explanation…",
     )
 
@@ -262,7 +347,7 @@ async def ui_run(audio_path: str | None) -> Generator[tuple[Any, Any, Any, Any, 
       str(audio_path),
       spec_path,
       heatmap_path,
-      _band_df(band_pct),
+      _band_plot(band_pct),
       explanation_text,
     )
   except ValueError as exc:
@@ -291,6 +376,12 @@ async def ui_run(audio_path: str | None) -> Generator[tuple[Any, Any, Any, Any, 
 
 
 def build_demo() -> gr.Blocks:
+  """
+  Build the Gradio Blocks UI (FR-DEP-001..009).
+
+  Returns:
+    Gradio Blocks demo instance.
+  """
   demo_samples = ensure_demo_samples(CFG)
 
   with gr.Blocks(title="DSDBA — Deepfake Speech Detection") as demo:
@@ -301,11 +392,6 @@ def build_demo() -> gr.Blocks:
       with gr.Column(scale=1):
         audio_in = gr.Audio(label="Upload audio", type="filepath")
         run_btn = gr.Button("Run")
-        gr.Examples(
-          examples=[[str(p)] for p in demo_samples],
-          inputs=[audio_in],
-          label="Demo examples (synthetic tones/noise)",
-        )
 
       with gr.Column(scale=2):
         with gr.Row():
@@ -317,7 +403,7 @@ def build_demo() -> gr.Blocks:
         spec_img = gr.Image(label="Spectrogram (proxy)", type="filepath")
 
         gradcam_img = gr.Image(label="Grad-CAM overlay", type="filepath")
-        band_plot = gr.BarPlot(label="Band attribution (%)", x="band", y="percent")
+        band_plot = gr.Plot(label="Band attribution (%)")
 
         gr.Markdown("**AI-generated explanation (English)**")
         explanation = gr.Textbox(label="Explanation", lines=6)
@@ -344,6 +430,4 @@ def build_demo() -> gr.Blocks:
 
 
 DEMO = build_demo()
-
-if __name__ == "__main__":
-  DEMO.launch()
+DEMO.launch(server_name="0.0.0.0", server_port=7860, show_error=True)
