@@ -2,8 +2,7 @@
 # requirements.txt — DSDBA Pinned Dependencies
 # DSDBA-SRS-2026-002 v2.1 | NFR-Security: exact versions required
 # Generated from: Google Colab Free Tier (Python 3.10, CUDA 11.8 / T4)
-# Serving environment: HuggingFace Spaces (CPU-only). README must set python_version: "3.10"
-# so pip can install torch==2.1.0 (no cp313 wheels). Python 3.13+ builds will fail on this pin.
+# Serving environment: HuggingFace Spaces (CPU-only, Python 3.10)
 # =============================================================================
 
 # ── Core ML Framework ─────────────────────────────────────────────────────────
@@ -56,4 +55,4 @@ pytest-timeout==2.2.0            # Latency assertion enforcement
 black==23.9.1                    # R.E.F.A.C.T.: code formatting
 mypy==1.6.1                      # R.E.F.A.C.T.: strict type checking
 flake8==6.1.0                    # R.E.F.A.C.T.: style compliance
-pydub
+pydub==0.25.1
