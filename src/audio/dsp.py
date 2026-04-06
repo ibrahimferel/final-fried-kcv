@@ -21,7 +21,6 @@ Date: 2026-03-22
 
 from __future__ import annotations
 
-import math
 import time
 from pathlib import Path
 from typing import Any
@@ -39,27 +38,6 @@ from src.utils.logger import log_info
 def _audio_cfg(cfg: dict[str, Any]) -> dict[str, Any]:
     """Return audio section from project configuration."""
     return cfg["audio"]
-
-
-def _trim_center_time_domain(waveform: np.ndarray, sample_rate: int, max_seconds: float) -> np.ndarray:
-    """
-    Keep at most ``max_seconds`` of audio with a center crop on the time axis.
-
-    Downstream only uses a fixed-duration clip (``audio.duration_sec``); trimming
-    here avoids resampling entire long uploads (podcasts, screen recordings),
-    which otherwise time out on Spaces or appear to "produce no output".
-    """
-    if sample_rate <= 0 or max_seconds <= 0:
-        return waveform
-    max_samples = max(1, int(math.ceil(float(max_seconds) * float(sample_rate))))
-    n = int(waveform.shape[-1])
-    if n <= max_samples:
-        return waveform
-    start = (n - max_samples) // 2
-    end = start + max_samples
-    if waveform.ndim == 1:
-        return waveform[start:end]
-    return waveform[:, start:end]
 
 
 def load_audio(file_path: Path, cfg: dict[str, Any]) -> tuple[np.ndarray, int]:
@@ -83,40 +61,15 @@ def load_audio(file_path: Path, cfg: dict[str, Any]) -> tuple[np.ndarray, int]:
     if ext not in supported:
         raise DSDBAError(code=str(audio_cfg["error_code_bad_format"]), message="Unsupported format", stage="audio_dsp")
 
-    target_sec = float(audio_cfg["duration_sec"])
-    path_str = str(file_path)
-
-    waveform: torch.Tensor
-    sample_rate: int
-
     try:
-        info = torchaudio.info(path_str)
-        sr_i = int(info.sample_rate)
-        n_frames = int(getattr(info, "num_frames", -1) or -1)
-        max_frames = max(1, int(math.ceil(target_sec * float(sr_i))) + 32)
-        if n_frames > max_frames:
-            start = max(0, (n_frames - max_frames) // 2)
-            waveform, sample_rate = torchaudio.load(path_str, frame_offset=start, num_frames=max_frames)
-            sample_rate = int(sample_rate)
-        else:
-            waveform, sample_rate = torchaudio.load(path_str)
-            sample_rate = int(sample_rate)
-    except Exception:
-        try:
-            waveform, sample_rate = torchaudio.load(path_str)
-            sample_rate = int(sample_rate)
-        except Exception as exc:
-            raise DSDBAError(
-                code=str(audio_cfg["error_code_bad_format"]),
-                message="Failed to load audio",
-                stage="audio_dsp",
-            ) from exc
+        waveform, sample_rate = torchaudio.load(str(file_path))
+    except Exception as exc:
+        raise DSDBAError(code=str(audio_cfg["error_code_bad_format"]), message="Failed to load audio", stage="audio_dsp") from exc
 
     waveform_np = waveform.numpy().astype(np.float32, copy=False)
-    waveform_np = _trim_center_time_domain(waveform_np, sample_rate, target_sec)
     if waveform_np.size == 0:
         raise DSDBAError(code=str(audio_cfg["error_code_bad_format"]), message="Empty audio payload", stage="audio_dsp")
-    return waveform_np, sample_rate
+    return waveform_np, int(sample_rate)
 
 
 def validate_duration(waveform: np.ndarray, sample_rate: int, cfg: dict[str, Any]) -> None:
