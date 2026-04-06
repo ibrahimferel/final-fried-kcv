@@ -7,7 +7,6 @@ sdk: gradio
 sdk_version: "4.44.0"
 app_file: app.py
 pinned: false
-python_version: "3.10"
 ---
 
 DSDBA - Deepfake Speech Detection & Biometric Authentication System
@@ -69,14 +68,11 @@ flowchart TB
 
 ## Installation
 
-Gradio is provided by the Hugging Face Space runtime (see `sdk_version` in the YAML header above). For **local** development, install Gradio to match that version, then install the rest:
-
 ```bash
-pip install "gradio[oauth]==4.44.0"
 pip install -r requirements.txt
 ```
 
-All runtime dependencies other than Gradio are pinned in `requirements.txt`.
+All dependencies are pinned in `requirements.txt`.
 
 ## Quickstart
 
