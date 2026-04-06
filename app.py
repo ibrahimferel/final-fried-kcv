@@ -208,7 +208,7 @@ def run_pipeline(audio_file: str | Path, cfg: dict[str, Any], onnx_session: Any,
   label, confidence = run_onnx_inference(session=onnx_session, tensor=tensor, cfg=cfg)
   heatmap_path, band_pct = run_gradcam(tensor=tensor, model=model, cfg=cfg)
 
-  explanation_task = asyncio.create_task(generate_explanation(label=label, confidence=confidence, band_pct=band_pct, cfg=cfg))
+  explanation_task = asyncio.ensure_future(generate_explanation(label=label, confidence=confidence, band_pct=band_pct, cfg=cfg))
   spec_path = _spectrogram_image_from_tensor(tensor)
   return label, confidence, spec_path, heatmap_path, band_pct, explanation_task
 
@@ -326,6 +326,7 @@ def build_demo() -> gr.Blocks:
       fn=ui_run,
       inputs=[audio_in],
       outputs=[verdict, confidence_pct, conf_bar, waveform, spec_img, gradcam_img, band_plot, explanation],
+      every=None,
     )
 
     btn0.click(fn=lambda: str(demo_samples[0]), inputs=[], outputs=[audio_in])
