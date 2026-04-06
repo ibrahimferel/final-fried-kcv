@@ -301,9 +301,11 @@ def build_demo() -> gr.Blocks:
       with gr.Column(scale=1):
         audio_in = gr.Audio(label="Upload audio", type="filepath", sources=["upload"])
         run_btn = gr.Button("Run")
-        with gr.Row():
-          for p in demo_samples:
-            gr.Button(p.name).click(fn=lambda path=str(p): path, outputs=[audio_in])
+        gr.Markdown("**Demo examples:**")
+        btn0 = gr.Button(demo_samples[0].name)
+        btn1 = gr.Button(demo_samples[1].name)
+        btn2 = gr.Button(demo_samples[2].name)
+        btn3 = gr.Button(demo_samples[3].name)
 
       with gr.Column(scale=2):
         with gr.Row():
@@ -325,6 +327,11 @@ def build_demo() -> gr.Blocks:
       inputs=[audio_in],
       outputs=[verdict, confidence_pct, conf_bar, waveform, spec_img, gradcam_img, band_plot, explanation],
     )
+
+    btn0.click(fn=lambda: str(demo_samples[0]), inputs=[], outputs=[audio_in])
+    btn1.click(fn=lambda: str(demo_samples[1]), inputs=[], outputs=[audio_in])
+    btn2.click(fn=lambda: str(demo_samples[2]), inputs=[], outputs=[audio_in])
+    btn3.click(fn=lambda: str(demo_samples[3]), inputs=[], outputs=[audio_in])
 
     with gr.Accordion("About", open=False):
       gr.Markdown(
