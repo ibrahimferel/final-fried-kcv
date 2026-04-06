@@ -301,12 +301,9 @@ def build_demo() -> gr.Blocks:
       with gr.Column(scale=1):
         audio_in = gr.Audio(label="Upload audio", type="filepath", sources=["upload"])
         run_btn = gr.Button("Run")
-        gr.Examples(
-          examples=[[str(p)] for p in demo_samples],
-          inputs=[audio_in],
-          label="Demo examples (synthetic tones/noise)",
-          cache_examples=False,
-        )
+        with gr.Row():
+          for p in demo_samples:
+            gr.Button(p.name).click(fn=lambda path=str(p): path, outputs=[audio_in])
 
       with gr.Column(scale=2):
         with gr.Row():
@@ -341,6 +338,7 @@ def build_demo() -> gr.Blocks:
         )
       )
 
+  demo.queue()
   return demo
 
 
