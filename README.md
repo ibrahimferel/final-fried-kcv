@@ -4,8 +4,10 @@ emoji: 🎤
 colorFrom: blue
 colorTo: purple
 sdk: gradio
-sdk_version: "4.44.0"
+sdk_version: "4.44.1"
 app_file: app.py
+# torch==2.1.0 has no cp313 wheels; default Space image is Python 3.13 — pin 3.10 for reproducible installs.
+python_version: "3.10"
 pinned: false
 ---
 
