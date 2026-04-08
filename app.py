@@ -5,7 +5,6 @@ SRS Reference: FR-DEP-001-010
 
 from __future__ import annotations
 
-import asyncio
 import tempfile
 import time
 from pathlib import Path
@@ -145,8 +144,10 @@ MODEL.eval()
 ONNX_SESSION = _ensure_onnx_session(cfg=CFG, model=MODEL)
 
 
-def ui_run(audio_path: str | None):
-    """Sync function — Gradio 4.x compatible."""
+# FIX 1: Jadikan async agar generate_explanation bisa di-await langsung
+#         tanpa asyncio.run() yang crash di dalam Gradio event loop.
+async def ui_run(audio_path: str | None):
+    """Async handler — compatible with Gradio 4.x queue."""
     if not audio_path:
         return None, 0.0, "", None, None, None, None, "Please upload a WAV/FLAC file."
 
@@ -162,10 +163,10 @@ def ui_run(audio_path: str | None):
         heatmap_path, band_pct = run_gradcam(tensor=tensor, model=MODEL, cfg=CFG)
         spec_path = _spectrogram_image_from_tensor(tensor)
 
-        # NLP explanation — sync dengan asyncio.run
+        # FIX 2: await langsung — tidak perlu asyncio.run() lagi
         try:
-            explanation_text, _ = asyncio.run(
-                generate_explanation(label=label, confidence=confidence, band_pct=band_pct, cfg=CFG)
+            explanation_text, _ = await generate_explanation(
+                label=label, confidence=confidence, band_pct=band_pct, cfg=CFG
             )
         except Exception:
             explanation_text = "Explanation unavailable."
@@ -174,7 +175,7 @@ def ui_run(audio_path: str | None):
         log_info(stage="deployment", message="ui_run_complete", data={"latency_ms": round(elapsed_ms, 3)})
 
         return (
-            label,
+            str(label),                          # verdict → gr.Textbox
             _confidence_percent(confidence),
             _verdict_html(label=label, confidence=confidence),
             str(audio_path),
@@ -211,7 +212,9 @@ def build_demo():
 
             with gr.Column(scale=2):
                 with gr.Row():
-                    verdict = gr.Label(label="Verdict")
+                    # FIX 3: gr.Textbox menggantikan gr.Label agar string verdict
+                    #         ditampilkan dengan benar (gr.Label butuh dict confidence).
+                    verdict = gr.Textbox(label="Verdict", interactive=False)
                     confidence_pct = gr.Number(label="Confidence (%)", precision=2)
                 conf_bar = gr.HTML(label="Confidence bar")
                 waveform = gr.Audio(label="Waveform", type="filepath")
@@ -225,10 +228,20 @@ def build_demo():
 
         run_btn.click(fn=ui_run, inputs=[audio_in], outputs=outputs)
 
-        btn0.click(fn=lambda: str(demo_samples[0]), inputs=[], outputs=[audio_in])
-        btn1.click(fn=lambda: str(demo_samples[1]), inputs=[], outputs=[audio_in])
-        btn2.click(fn=lambda: str(demo_samples[2]), inputs=[], outputs=[audio_in])
-        btn3.click(fn=lambda: str(demo_samples[3]), inputs=[], outputs=[audio_in])
+        # FIX 4: Tombol demo sekarang langsung set audio DAN jalankan inferensi
+        #         via .then() — tidak perlu klik Run manual lagi.
+        btn0.click(fn=lambda: str(demo_samples[0]), inputs=[], outputs=[audio_in]).then(
+            fn=ui_run, inputs=[audio_in], outputs=outputs
+        )
+        btn1.click(fn=lambda: str(demo_samples[1]), inputs=[], outputs=[audio_in]).then(
+            fn=ui_run, inputs=[audio_in], outputs=outputs
+        )
+        btn2.click(fn=lambda: str(demo_samples[2]), inputs=[], outputs=[audio_in]).then(
+            fn=ui_run, inputs=[audio_in], outputs=outputs
+        )
+        btn3.click(fn=lambda: str(demo_samples[3]), inputs=[], outputs=[audio_in]).then(
+            fn=ui_run, inputs=[audio_in], outputs=outputs
+        )
 
         with gr.Accordion("About", open=False):
             gr.Markdown("\n".join([
