@@ -146,29 +146,40 @@ MODEL.eval()
 ONNX_SESSION = _ensure_onnx_session(cfg=CFG, model=MODEL)
 
 
-def _input_path(audio_path: str | list | tuple | None) -> str | None:
-    """Normalize Gradio File / Audio filepath payloads to a single path string."""
+def _input_path(audio_path: Any) -> str | None:
+    """Normalize Gradio File / Audio payloads (str, list, dict, pathlib) to a path string."""
     if audio_path is None:
         return None
     if isinstance(audio_path, (list, tuple)):
         if not audio_path:
             return None
         audio_path = audio_path[0]
-    return str(audio_path) if audio_path else None
+    if isinstance(audio_path, dict):
+        audio_path = audio_path.get("path") or audio_path.get("name")
+    if audio_path is None:
+        return None
+    if isinstance(audio_path, Path):
+        return str(audio_path)
+    path_attr = getattr(audio_path, "path", None)
+    if isinstance(path_attr, str) and path_attr:
+        return path_attr
+    s = str(audio_path)
+    return s if s else None
 
 
 def ui_run(audio_path: str | list | tuple | None):
     """Sync function — Gradio 4.x compatible."""
     audio_path = _input_path(audio_path)
+    empty_bands = pd.DataFrame(columns=["band", "percent"])
     if not audio_path:
-        return None, 0.0, "", None, None, None, None, "Please upload a WAV/FLAC file."
+        return "", 0.0, "", None, None, None, empty_bands, "Please upload a WAV/FLAC file."
 
     start = time.perf_counter()
     try:
         ap = Path(audio_path)
         max_mb = float(CFG["deployment"]["max_upload_mb"])
         if ap.stat().st_size > int(max_mb * 1024 * 1024):
-            return None, 0.0, "", None, None, None, None, "File too large (> 20 MB)."
+            return "", 0.0, "", None, None, None, empty_bands, "File too large (> 20 MB)."
 
         tensor = preprocess_audio(file_path=ap, cfg=CFG)
         label, confidence = run_onnx_inference(session=ONNX_SESSION, tensor=tensor, cfg=CFG)
@@ -199,10 +210,10 @@ def ui_run(audio_path: str | list | tuple | None):
 
     except DSDBAError as exc:
         msg = {"AUD-001": "Audio too short (< 0.5 s).", "AUD-002": "Unsupported format."}.get(exc.code, "Audio processing failed.")
-        return None, 0.0, "", None, None, None, None, msg
+        return "", 0.0, "", None, None, None, empty_bands, msg
     except Exception as exc:
         log_error(stage="deployment", message="ui_exception", data={"reason": str(exc)})
-        return None, 0.0, "", None, None, None, None, f"Error: {str(exc)}"
+        return "", 0.0, "", None, None, None, empty_bands, f"Error: {str(exc)}"
 
 
 def build_demo():
@@ -236,18 +247,21 @@ def build_demo():
                 waveform = gr.Audio(label="Waveform", type="filepath")
                 spec_img = gr.Image(label="Spectrogram (proxy)", type="filepath")
                 gradcam_img = gr.Image(label="Grad-CAM overlay", type="filepath")
-                band_plot = gr.BarPlot(label="Band attribution (%)", x="band", y="percent")
+                # BarPlot pulls Altair/Vega in the browser; on some Spaces/iframes it breaks the whole UI (no upload, no Run).
+                band_table = gr.Dataframe(label="Band attribution (%)", headers=["band", "percent"], interactive=False)
                 gr.Markdown("**AI-generated explanation (English)**")
                 explanation = gr.Textbox(label="Explanation", lines=6)
 
-        outputs = [verdict, confidence_pct, conf_bar, waveform, spec_img, gradcam_img, band_plot, explanation]
+        outputs = [verdict, confidence_pct, conf_bar, waveform, spec_img, gradcam_img, band_table, explanation]
 
         run_btn.click(fn=ui_run, inputs=[audio_in], outputs=outputs)
 
-        btn0.click(fn=lambda: str(demo_samples[0]), inputs=[], outputs=[audio_in])
-        btn1.click(fn=lambda: str(demo_samples[1]), inputs=[], outputs=[audio_in])
-        btn2.click(fn=lambda: str(demo_samples[2]), inputs=[], outputs=[audio_in])
-        btn3.click(fn=lambda: str(demo_samples[3]), inputs=[], outputs=[audio_in])
+        # One click: load sample + run (works even if manual upload is flaky in the browser).
+        for i, b in enumerate((btn0, btn1, btn2, btn3)):
+            path = str(demo_samples[i])
+            b.click(fn=lambda p=path: p, inputs=[], outputs=[audio_in]).then(
+                fn=ui_run, inputs=[audio_in], outputs=outputs
+            )
 
         with gr.Accordion("About", open=False):
             gr.Markdown("\n".join([
@@ -257,8 +271,7 @@ def build_demo():
                 "- **Team**: Ferel, Safa — ITS Informatics | KCVanguard ML Workshop.",
             ]))
 
-    # Single concurrent prediction avoids CPU thrashing and stuck queues on free-tier Spaces.
-    demo.queue(default_concurrency_limit=1)
+    demo.queue()
     return demo
 
 
