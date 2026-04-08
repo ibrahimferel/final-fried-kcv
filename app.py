@@ -6,6 +6,7 @@ SRS Reference: FR-DEP-001-010
 from __future__ import annotations
 
 import asyncio
+import os
 import tempfile
 import time
 from pathlib import Path
@@ -145,8 +146,20 @@ MODEL.eval()
 ONNX_SESSION = _ensure_onnx_session(cfg=CFG, model=MODEL)
 
 
-def ui_run(audio_path: str | None):
+def _input_path(audio_path: str | list | tuple | None) -> str | None:
+    """Normalize Gradio File / Audio filepath payloads to a single path string."""
+    if audio_path is None:
+        return None
+    if isinstance(audio_path, (list, tuple)):
+        if not audio_path:
+            return None
+        audio_path = audio_path[0]
+    return str(audio_path) if audio_path else None
+
+
+def ui_run(audio_path: str | list | tuple | None):
     """Sync function — Gradio 4.x compatible."""
+    audio_path = _input_path(audio_path)
     if not audio_path:
         return None, 0.0, "", None, None, None, None, "Please upload a WAV/FLAC file."
 
@@ -201,7 +214,13 @@ def build_demo():
 
         with gr.Row():
             with gr.Column(scale=1):
-                audio_in = gr.Audio(label="Upload audio", type="filepath", sources=["upload"])
+                # gr.File is more reliable than gr.Audio for uploads on Hugging Face Spaces (WebSocket / client quirks).
+                audio_in = gr.File(
+                    label="Upload audio (WAV/FLAC)",
+                    file_count="single",
+                    type="filepath",
+                    file_types=[".wav", ".flac"],
+                )
                 run_btn = gr.Button("Run", variant="primary")
                 gr.Markdown("**Demo examples:**")
                 btn0 = gr.Button(demo_samples[0].name)
@@ -238,11 +257,15 @@ def build_demo():
                 "- **Team**: Ferel, Safa — ITS Informatics | KCVanguard ML Workshop.",
             ]))
 
-    demo.queue()
+    # Single concurrent prediction avoids CPU thrashing and stuck queues on free-tier Spaces.
+    demo.queue(default_concurrency_limit=1)
     return demo
 
 
-DEMO = build_demo()
+demo = build_demo()
 
 if __name__ == "__main__":
-    DEMO.launch()
+    demo.launch(
+        server_name="0.0.0.0",
+        server_port=int(os.environ.get("PORT", "7860")),
+    )
