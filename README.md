@@ -48,7 +48,7 @@ flowchart TB
   classDef nlp fill:#1a1300,stroke:#b36b00,color:#ffbb33,rx:8
   classDef fallback fill:#141000,stroke:#996000,color:#ffaa22,rx:6
 
-  IN["🎵 WAV / FLAC\n(upload or filepath)"]:::io
+  IN["WAV / FLAC\n(upload or filepath)"]:::io
 
   subgraph S1["Stage 1 — Audio DSP  (FR-AUD-001–008)"]
     direction TB
