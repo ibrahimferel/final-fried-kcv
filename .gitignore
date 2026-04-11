@@ -1,0 +1,59 @@
+# Environment & secrets
+.env
+*.env
+
+# Virtual environment — never commit (reinstall with pip)
+.venv/
+venv/
+ENV/
+env/
+
+# Model files (upload ke HF Hub / release, bukan GitHub)
+*.pth
+*.onnx
+*.bin
+*.safetensors
+*.pt
+*.ckpt
+models/checkpoints/
+
+# Python cache & tooling
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+coverage.xml
+*.egg-info/
+.eggs/
+dist/
+build/
+*.egg
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb_checkpoints
+
+# Local samples: audio + generated pipeline figures (keep folder via .gitkeep)
+samples/*
+!samples/.gitkeep
+
+# Artifacts / runs (regenerate locally or attach elsewhere)
+outputs/
+wandb/
+lightning_logs/
+mlruns/
+
+# Runtime / XAI outputs (regenerated locally)
+# (outputs/ already above)
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+*.swp
+*.swo
