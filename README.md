@@ -50,7 +50,7 @@ flowchart TB
 
   IN["🎵 WAV / FLAC\n(upload or filepath)"]:::io
 
-  subgraph S1["⚙️  Stage 1 — Audio DSP  (FR-AUD-001–008)"]
+  subgraph S1["Stage 1 — Audio DSP  (FR-AUD-001–008)"]
     direction TB
     D1["librosa: load → resample 16 kHz → mono"]:::dsp
     D2["STFT → Mel Spectrogram (128 bins)"]:::dsp
@@ -93,7 +93,7 @@ flowchart TB
     N3 -- timeout/error --> N4
   end
 
-  EXP["📝 English paragraph  (3–5 sentences)"]:::io
+  EXP["English paragraph  (3–5 sentences)"]:::io
 
   IN --> S1 --> T --> S2 --> PRED
   T --> S3
