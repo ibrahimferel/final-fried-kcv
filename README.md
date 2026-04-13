@@ -375,7 +375,7 @@ Selected for: balanced bonafide/spoof labels, diverse TTS synthesis methods, uni
 | HF Spaces Demo | [Fake67-App](https://huggingface.co/spaces/safamashita/fake67-app) |
 | Medium Article | [Fake67: Explainable Deepfake Audio Detection](https://medium.com/@ferelibrahim) |
 | Drive | [Fake67-Drive: Data, Preprocessed, Models](https://drive.google.com/drive/folders/1hcS_IT9QCxwpkfy32IFSVfcDDlWAidxz?usp=sharing) |
-| Training Notebook | `notebooks/dsdba_training.ipynb` |
+| Training Notebook | [Fake67's Notebook](https://colab.research.google.com/drive/1VXLacsyRwnQSiveF2pJyhYczcAiYPfBM?usp=sharing) |
 
 ---
 
