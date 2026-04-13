@@ -31,6 +31,16 @@ Fake67 is our answer: an automated, explainable detection pipeline that goes bey
 
 ---
 
+## 🌟 Project Demonstration
+
+<div align="center">
+
+![Fake67 Gradio demo: upload, prediction, Grad-CAM heatmap, and NLP explanation](artifacts/previews/demo-fried-kcv.gif)
+
+</div>
+
+---
+
 ## 🏗️ System Architecture
 
 Fake67 is a **4-stage sequential multimodal pipeline** deployed via Gradio on Hugging Face Spaces:
